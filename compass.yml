@@ -1,0 +1,31 @@
+name: fork-kustomize-controller
+id: ari:cloud:compass:83673fa7-fd28-4f4a-9738-f584064570a7:component/db43f86d-85fe-42e1-954d-457f5a4082b8/83490c6a-9e1a-4db2-88d1-4959e9348685
+description: The GitOps Toolkit Kustomize reconciler
+configVersion: 1
+typeId: SERVICE
+fields:
+  tier: 4
+links:
+  - name: null
+    type: REPOSITORY
+    url: https://github.com/verygood-ops/fork-kustomize-controller
+relationships:
+  DEPENDS_ON: []
+labels:
+  - source:github
+customFields:
+  - name: Logging
+    type: text
+    value: null
+  - name: Metrics
+    type: text
+    value: null
+  - name: Service Name
+    type: text
+    value: null
+  - name: Tracing
+    type: text
+    value: null
+  - name: coverage-metricSourceId
+    type: text
+    value: null

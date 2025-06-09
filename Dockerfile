@@ -1,9 +1,9 @@
-ARG GO_VERSION=1.19
-ARG XX_VERSION=1.1.0
+ARG GO_VERSION=1.24
+ARG XX_VERSION=1.6.1
 
 FROM --platform=$BUILDPLATFORM tonistiigi/xx:${XX_VERSION} AS xx
 
-FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine as builder
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS builder
 
 # Copy the build utilities.
 COPY --from=xx / /
@@ -31,7 +31,7 @@ COPY internal/ internal/
 ENV CGO_ENABLED=0
 RUN xx-go build -trimpath -a -o kustomize-controller main.go
 
-FROM alpine:3.17
+FROM alpine:3.22
 
 # Uses GnuPG from edge to patch CVE-2022-3515.
 RUN apk add --no-cache ca-certificates tini git openssh-client && \

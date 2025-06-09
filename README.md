@@ -6,6 +6,16 @@
 [![license](https://img.shields.io/github/license/fluxcd/kustomize-controller.svg)](https://github.com/fluxcd/kustomize-controller/blob/main/LICENSE)
 [![release](https://img.shields.io/github/release/fluxcd/kustomize-controller/all.svg)](https://github.com/fluxcd/kustomize-controller/releases)
 
+## VGS fork
+
+```
+today=$(date +%Y%m%d)
+export IMG="190066226418.dkr.ecr.us-east-1.amazonaws.com/infra/kustomize-controller:v0.33.0-$today" 
+make docker-build
+assume presidio/infra
+make docker-push
+```
+
 The kustomize-controller is a [Flux](https://github.com/fluxcd/flux2) component,
 specialized in running continuous delivery pipelines for infrastructure and workloads
 defined with Kubernetes manifests and assembled with Kustomize.

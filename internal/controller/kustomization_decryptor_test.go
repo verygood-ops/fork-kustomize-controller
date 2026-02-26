@@ -82,6 +82,8 @@ func TestKustomizationReconciler_Decryptor(t *testing.T) {
 	g.Expect(err).ToNot(HaveOccurred())
 	ageKey, err := os.ReadFile("testdata/sops/keys/age.txt")
 	g.Expect(err).ToNot(HaveOccurred())
+	agePQKey, err := os.ReadFile("testdata/sops/keys/age-pq.txt")
+	g.Expect(err).ToNot(HaveOccurred())
 
 	sopsSecretKey := types.NamespacedName{
 		Name:      "sops-" + randStringRunes(5),
@@ -95,6 +97,7 @@ func TestKustomizationReconciler_Decryptor(t *testing.T) {
 		StringData: map[string]string{
 			"pgp.asc":          string(pgpKey),
 			"age.agekey":       string(ageKey),
+			"age-pq.agekey":    string(agePQKey),
 			"sops.vault-token": "secret",
 		},
 	}
@@ -145,6 +148,7 @@ func TestKustomizationReconciler_Decryptor(t *testing.T) {
 
 		secretNames := []string{
 			"sops-algo-age",
+			"sops-algo-age-pq",
 			"sops-algo-pgp",
 			"sops-algo-vault",
 			"sops-component",
@@ -305,6 +309,7 @@ func TestKustomizationReconciler_Decryptor(t *testing.T) {
 			StringData: map[string]string{
 				"pgp.asc":          string(pgpKey),
 				"age.agekey":       string(ageKey),
+				"age-pq.agekey":    string(agePQKey),
 				"sops.vault-token": "secret",
 			},
 		}

@@ -745,6 +745,57 @@ func TestDecryptor_DecryptResource(t *testing.T) {
 		g.Expect(got.MarshalJSON()).To(Equal(secretData))
 	})
 
+	t.Run("SOPS-encrypted Secret resource using Age hybrid identity", func(t *testing.T) {
+		g := NewWithT(t)
+
+		kus := kustomization.DeepCopy()
+		kus.Spec.Decryption = &kustomizev1.Decryption{
+			Provider: DecryptionProviderSOPS,
+		}
+
+		d, cleanup, err := New(fake.NewClientBuilder().Build(), kus)
+		g.Expect(err).ToNot(HaveOccurred())
+		t.Cleanup(cleanup)
+
+		ageID, err := extage.GenerateHybridIdentity()
+		g.Expect(err).ToNot(HaveOccurred())
+		d.ageIdentities = append(d.ageIdentities, ageID)
+
+		secret, _ := newSecretResource("test", "secret", map[string]interface{}{
+			"key": "value",
+		})
+		g.Expect(isSOPSEncryptedResource(secret)).To(BeFalse())
+
+		secretData, err := secret.MarshalJSON()
+		g.Expect(err).ToNot(HaveOccurred())
+
+		encData, err := d.sopsEncryptWithFormat(sops.Metadata{
+			EncryptedRegex: "^(data|stringData)$",
+			KeyGroups: []sops.KeyGroup{
+				{&age.MasterKey{Recipient: ageID.Recipient().String()}},
+			},
+		}, secretData, formats.Json, formats.Json)
+		g.Expect(err).ToNot(HaveOccurred())
+
+		g.Expect(secret.UnmarshalJSON(encData)).To(Succeed())
+		g.Expect(isSOPSEncryptedResource(secret)).To(BeTrue())
+
+		secret.SetAnnotations(map[string]string{
+			"kustomize.toolkit.fluxcd.io/decrypt": "disabled",
+		})
+
+		got, err := d.DecryptResource(secret)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(got).To(BeNil())
+
+		secret.SetAnnotations(map[string]string{})
+
+		got, err = d.DecryptResource(secret)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(got).ToNot(BeNil())
+		g.Expect(got.MarshalJSON()).To(Equal(secretData))
+	})
+
 	t.Run("SOPS-encrypted binary-format Secret data field", func(t *testing.T) {
 		g := NewWithT(t)
 

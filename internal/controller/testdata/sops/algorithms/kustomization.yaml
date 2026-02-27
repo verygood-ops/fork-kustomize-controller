@@ -3,5 +3,6 @@ kind: Kustomization
 namePrefix: algo-
 resources:
   - age.yaml
+  - age-pq.yaml
   - pgp.yaml
   - vault.yaml

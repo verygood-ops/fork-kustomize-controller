@@ -640,3 +640,191 @@ spec:
 	g.Expect(cancelEvent.Message).To(ContainSubstring("Health checks canceled"))
 	g.Expect(cancelEvent.Message).To(ContainSubstring("GitRepository"))
 }
+
+func TestKustomizationReconciler_HealthCheckExprs_GroupOnly(t *testing.T) {
+	g := NewWithT(t)
+	id := "cel-grp-" + randStringRunes(5)
+	revision := "v1.0.0"
+	resultK := &kustomizev1.Kustomization{}
+	timeout := 60 * time.Second
+
+	err := createNamespace(id)
+	g.Expect(err).NotTo(HaveOccurred(), "failed to create test namespace")
+
+	err = createKubeConfigSecret(id)
+	g.Expect(err).NotTo(HaveOccurred(), "failed to create kubeconfig secret")
+
+	// Unique group per test run to avoid CRD name collisions within the shared envtest.
+	group := fmt.Sprintf("%s.flux-test.io", id)
+	fooCRName := "foo-" + randStringRunes(5)
+	barCRName := "bar-" + randStringRunes(5)
+
+	// Two cluster-scoped CRDs in the same group, plus one CR of each kind.
+	// The CEL expression reads `spec.ready`, applied via SSA from the artifact.
+	buildFiles := func(barReady bool) []testserver.File {
+		return []testserver.File{
+			{
+				Name: "crd-foo.yaml",
+				Body: fmt.Sprintf(`---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: foos.%[1]s
+spec:
+  group: %[1]s
+  names:
+    kind: Foo
+    listKind: FooList
+    plural: foos
+    singular: foo
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                ready:
+                  type: boolean
+`, group),
+			},
+			{
+				Name: "crd-bar.yaml",
+				Body: fmt.Sprintf(`---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: bars.%[1]s
+spec:
+  group: %[1]s
+  names:
+    kind: Bar
+    listKind: BarList
+    plural: bars
+    singular: bar
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                ready:
+                  type: boolean
+`, group),
+			},
+			{
+				Name: "foo.yaml",
+				Body: fmt.Sprintf(`---
+apiVersion: %[1]s/v1
+kind: Foo
+metadata:
+  name: %[2]s
+spec:
+  ready: true
+`, group, fooCRName),
+			},
+			{
+				Name: "bar.yaml",
+				Body: fmt.Sprintf(`---
+apiVersion: %[1]s/v1
+kind: Bar
+metadata:
+  name: %[2]s
+spec:
+  ready: %[3]t
+`, group, barCRName, barReady),
+			},
+		}
+	}
+
+	artifact, err := testServer.ArtifactFromFiles(buildFiles(true))
+	g.Expect(err).NotTo(HaveOccurred())
+
+	repositoryName := types.NamespacedName{
+		Name:      fmt.Sprintf("grp-%s", randStringRunes(5)),
+		Namespace: id,
+	}
+
+	err = applyGitRepository(repositoryName, artifact, revision)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	kustomization := &kustomizev1.Kustomization{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("grp-%s", randStringRunes(5)),
+			Namespace: id,
+		},
+		Spec: kustomizev1.KustomizationSpec{
+			Interval: metav1.Duration{Duration: 2 * time.Minute},
+			Path:     "./",
+			KubeConfig: &meta.KubeConfigReference{
+				SecretRef: &meta.SecretKeyReference{
+					Name: "kubeconfig",
+				},
+			},
+			SourceRef: kustomizev1.CrossNamespaceSourceReference{
+				Name:      repositoryName.Name,
+				Namespace: repositoryName.Namespace,
+				Kind:      sourcev1.GitRepositoryKind,
+			},
+			Prune: true,
+			Wait:  true,
+			// Single group-only healthcheck (empty Kind) that must be applied
+			// to both Foo and Bar custom resources.
+			HealthCheckExprs: []kustomize.CustomHealthCheck{{
+				APIVersion: group + "/v1",
+				HealthCheckExpressions: kustomize.HealthCheckExpressions{
+					Current: "has(spec.ready) && spec.ready == true",
+				},
+			}},
+		},
+	}
+
+	g.Expect(k8sClient.Create(context.Background(), kustomization)).To(Succeed())
+
+	t.Run("group-only healthcheck succeeds for both kinds", func(t *testing.T) {
+		g.Eventually(func() bool {
+			_ = k8sClient.Get(context.Background(), client.ObjectKeyFromObject(kustomization), resultK)
+			return isReconcileSuccess(resultK)
+		}, timeout, time.Second).Should(BeTrue())
+		logStatus(t, resultK)
+
+		g.Expect(conditions.IsTrue(resultK, meta.HealthyCondition)).To(BeTrue())
+		g.Expect(conditions.GetReason(resultK, meta.HealthyCondition)).To(BeIdenticalTo(meta.SucceededReason))
+	})
+
+	t.Run("reports unhealthy when one kind stops satisfying the group expression", func(t *testing.T) {
+		badArtifact, err := testServer.ArtifactFromFiles(buildFiles(false))
+		g.Expect(err).NotTo(HaveOccurred())
+
+		err = applyGitRepository(repositoryName, badArtifact, "v1.0.1")
+		g.Expect(err).NotTo(HaveOccurred())
+
+		// Shorten healthcheck timeout so the failure surfaces quickly.
+		g.Eventually(func() error {
+			_ = k8sClient.Get(context.Background(), client.ObjectKeyFromObject(kustomization), resultK)
+			resultK.Spec.Timeout = &metav1.Duration{Duration: 5 * time.Second}
+			return k8sClient.Update(context.Background(), resultK)
+		}, timeout, time.Second).Should(BeNil())
+
+		g.Eventually(func() bool {
+			_ = k8sClient.Get(context.Background(), client.ObjectKeyFromObject(kustomization), resultK)
+			return conditions.IsFalse(resultK, meta.HealthyCondition) &&
+				conditions.GetReason(resultK, meta.HealthyCondition) == meta.HealthCheckFailedReason
+		}, timeout, time.Second).Should(BeTrue())
+
+		msg := conditions.GetMessage(resultK, meta.HealthyCondition)
+		g.Expect(msg).To(ContainSubstring("Bar"))
+		g.Expect(msg).To(ContainSubstring(barCRName))
+	})
+}

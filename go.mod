@@ -24,12 +24,12 @@ require (
 	github.com/fluxcd/pkg/apis/event v0.25.0
 	github.com/fluxcd/pkg/apis/kustomize v1.17.0
 	github.com/fluxcd/pkg/apis/meta v1.26.0
-	github.com/fluxcd/pkg/auth v0.41.0
+	github.com/fluxcd/pkg/auth v0.42.0
 	github.com/fluxcd/pkg/cache v0.13.0
 	github.com/fluxcd/pkg/http/fetch v0.24.0
 	github.com/fluxcd/pkg/kustomize v1.31.0
-	github.com/fluxcd/pkg/runtime v0.104.0
-	github.com/fluxcd/pkg/ssa v0.71.0
+	github.com/fluxcd/pkg/runtime v0.105.0
+	github.com/fluxcd/pkg/ssa v0.72.0
 	github.com/fluxcd/pkg/tar v1.1.0
 	github.com/fluxcd/pkg/testserver v0.13.0
 	github.com/fluxcd/source-controller/api v1.8.0
